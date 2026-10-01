@@ -7,9 +7,11 @@ import { PassThrough } from "node:stream";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   type BskRunResult,
+  bskSpawnGuidance,
   createBskRunner,
   isCommandNotFound,
   isSessionBusyResult,
+  isSpawnDenied,
   parseBskJson,
   runWithSessionBusyRetry,
 } from "../src/runner";
@@ -589,6 +591,52 @@ describe("isCommandNotFound", () => {
       isCommandNotFound(Object.assign(new Error("spawn bsk ENOENT"), { code: "ENOENT" })),
     ).toBe(true);
     expect(isCommandNotFound(new Error("other"))).toBe(false);
+  });
+});
+
+describe("isSpawnDenied", () => {
+  // Windows reports a refused execution as a bare `spawn UNKNOWN`
+  // (errno -4094 = libuv UV_UNKNOWN); it does not map ERROR_ACCESS_DENIED.
+  it("detects the UNKNOWN code Windows uses for a refused execution", () => {
+    expect(
+      isSpawnDenied(Object.assign(new Error("spawn UNKNOWN"), { code: "UNKNOWN", errno: -4094 })),
+    ).toBe(true);
+  });
+
+  it("stays separate from a missing binary, which needs opposite advice", () => {
+    expect(isSpawnDenied(Object.assign(new Error("spawn bsk ENOENT"), { code: "ENOENT" }))).toBe(
+      false,
+    );
+    expect(isSpawnDenied(new Error("other"))).toBe(false);
+  });
+});
+
+describe("bskSpawnGuidance", () => {
+  const missing = Object.assign(new Error("spawn bsk ENOENT"), { code: "ENOENT" });
+  const denied = Object.assign(new Error("spawn UNKNOWN"), { code: "UNKNOWN", errno: -4094 });
+
+  it("tells the user to install when the binary is missing", () => {
+    expect(bskSpawnGuidance(missing, "C:\\bsk.exe")).toMatch(/must be installed/);
+  });
+
+  it("does NOT tell the user to install when the OS refused to execute it", () => {
+    const guidance = bskSpawnGuidance(denied, "C:\\bsk.exe");
+    expect(guidance).toBeDefined();
+    expect(guidance).not.toMatch(/must be installed/);
+    expect(guidance).toMatch(/refused to start it/);
+    expect(guidance).toMatch(/application control policy/);
+    // The one instruction that would waste the reader's time.
+    expect(guidance).toMatch(/Reinstalling will not help/);
+  });
+
+  it("names the blocked path so the user can act on the right file", () => {
+    expect(bskSpawnGuidance(denied, "C:\\Users\\me\\.local\\bin\\bsk.exe")).toContain(
+      "C:\\Users\\me\\.local\\bin\\bsk.exe",
+    );
+  });
+
+  it("returns undefined for unrelated failures so callers rethrow as-is", () => {
+    expect(bskSpawnGuidance(new Error("connection reset"), "C:\\bsk.exe")).toBeUndefined();
   });
 });
 

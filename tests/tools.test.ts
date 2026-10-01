@@ -1311,6 +1311,32 @@ describe("error and cancellation semantics", () => {
     const start = tools.get("session.start");
     await expect(start?.execute({}, makeExec())).rejects.toThrow(/BrowserSkill must be installed/);
   });
+
+  it("maps a policy-blocked bsk binary onto the blocked message, not the install one", async () => {
+    const { ctx, tools } = makeCtx();
+    const registry = new SessionRegistry(5);
+    const runner = {
+      async run(): Promise<BskRunResult> {
+        // What Windows actually raises for an app-control-policy block.
+        throw Object.assign(new Error("spawn UNKNOWN"), { code: "UNKNOWN", errno: -4094 });
+      },
+      killAll() {},
+      killFor: () => 0,
+      setHostedDaemon() {},
+    };
+    registerBrowserTools({
+      ctx: ctx as never,
+      runner,
+      registry,
+      config: CONFIG,
+      observation: disabledObservation({ ctx, runner, registry }),
+      queue: new KeyedExecutor(),
+    });
+    const start = tools.get("session.start");
+    // The install advice is actively wrong here: the file is present.
+    await expect(start?.execute({}, makeExec())).rejects.toThrow(/refused to start it/);
+    await expect(start?.execute({}, makeExec())).rejects.not.toThrow(/must be installed/);
+  });
 });
 
 describe("presentation", () => {

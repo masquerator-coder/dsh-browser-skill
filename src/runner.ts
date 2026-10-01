@@ -328,6 +328,56 @@ export function isCommandNotFound(error: unknown): boolean {
   );
 }
 
+/**
+ * True when the binary exists but the OS refused to execute it.
+ *
+ * Windows reports this as a bare `spawn UNKNOWN` (`errno -4094`, libuv's
+ * `UV_UNKNOWN`): it does not map the underlying `ERROR_ACCESS_DENIED` (5), and
+ * Node raises the failure synchronously instead of emitting `error`. The
+ * realistic causes are an application control policy (Smart App Control, WDAC,
+ * AppLocker) rejecting an unsigned binary, or a blocked or quarantined file.
+ * Reported next to `ENOENT` because the two need opposite advice, yet both
+ * surface as one useless word in the default message.
+ */
+export function isSpawnDenied(error: unknown): boolean {
+  return (
+    typeof error === "object" &&
+    error !== null &&
+    "code" in error &&
+    (error as { code?: unknown }).code === "UNKNOWN"
+  );
+}
+
+/**
+ * Guidance for a spawn the OS refused, as opposed to a missing binary.
+ *
+ * Kept deliberately short and non-directive about *which* policy applies:
+ * the plugin cannot read the machine's code-integrity state, and guessing
+ * sends users down the wrong path. It states what was observed, the two
+ * realistic causes, and the one thing that definitely will not help.
+ */
+export function bskBlockedMessage(bskPath: string): string {
+  return (
+    `the bsk CLI ("${bskPath}") exists but could not be executed — the operating system ` +
+    "refused to start it. On Windows this is usually an application control policy " +
+    "(Smart App Control, WDAC, or AppLocker) rejecting the binary, typically because it " +
+    "is unsigned; check Windows Security > App & browser control, and confirm the file " +
+    "was not quarantined. Reinstalling will not help: the block is on execution, not " +
+    "on installation."
+  );
+}
+
+/**
+ * Map a spawn failure onto model-facing guidance, or return undefined when the
+ * error is not a spawn failure. Keeps callers from having to know which codes
+ * mean which problem.
+ */
+export function bskSpawnGuidance(error: unknown, bskPath: string): string | undefined {
+  if (isCommandNotFound(error)) return bskInstallMessage(bskPath);
+  if (isSpawnDenied(error)) return bskBlockedMessage(bskPath);
+  return undefined;
+}
+
 /** True only for the daemon's transient per-session reconciliation window. */
 export function isSessionBusyResult(result: BskRunResult): boolean {
   if (result.code === 0) return false;

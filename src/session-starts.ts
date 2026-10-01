@@ -1,7 +1,6 @@
 import { randomUUID } from "node:crypto";
 import {
-  bskInstallMessage,
-  isCommandNotFound,
+  bskSpawnGuidance,
   parseBskJson,
   runWithSessionBusyRetry,
 } from "./runner";
@@ -97,7 +96,8 @@ export class SessionStarts {
       // No start has been sent. An independently accepted stop still owns its
       // cancellation job/receipt; a late prepare must not discard that intent.
       if (!record.cleanup && !record.stop) this.forget(record);
-      if (isCommandNotFound(error)) throw new Error(bskInstallMessage(this.deps.config.bskPath));
+      const guidance = bskSpawnGuidance(error, this.deps.config.bskPath);
+      if (guidance !== undefined) throw new Error(guidance);
       throw error;
     }
   }

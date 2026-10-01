@@ -119,6 +119,24 @@ describe("DaemonHost", () => {
     expect(warnings.join("\n")).toContain("EPERM");
   });
 
+  it("stays silent when the OS refused the spawn, since the probe already reported it", async () => {
+    const warnings: string[] = [];
+    const host = new DaemonHost({
+      bskPath: "bsk",
+      runner: statusRunner([1]),
+      spawnImpl: (() => {
+        throw Object.assign(new Error("spawn UNKNOWN"), { code: "UNKNOWN", errno: -4094 });
+      }) as never,
+      warn: (message) => warnings.push(message),
+    });
+
+    const status = await host.start();
+    expect(status.kind).toBe("unavailable");
+    // One failure must not print two warnings carrying the same bare
+    // "spawn UNKNOWN"; the startup probe's guidance is the useful one.
+    expect(warnings).toEqual([]);
+  });
+
   it("stops only its own child, and only once", async () => {
     const child = new FakeChild();
     const host = new DaemonHost({

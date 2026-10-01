@@ -23,8 +23,7 @@ import { registerPhaseOneTools } from "./phase-one-tools";
 import type { KeyedExecutor } from "./queue";
 import {
   type BskRunner,
-  bskInstallMessage,
-  isCommandNotFound,
+  bskSpawnGuidance,
   parseBskJson,
   runWithSessionBusyRetry,
 } from "./runner";
@@ -131,9 +130,8 @@ async function runBsk(
           ? await deps.queue.run(observeSession, runOnce, exec.signal)
           : await runOnce();
     } catch (error) {
-      if (isCommandNotFound(error)) {
-        throw new Error(bskInstallMessage(deps.config.bskPath));
-      }
+      const guidance = bskSpawnGuidance(error, deps.config.bskPath);
+      if (guidance !== undefined) throw new Error(guidance);
       throw error;
     }
     if (result.aborted) {
@@ -345,9 +343,8 @@ function defineBrowserOperations(deps: ToolDeps, register: DefinitionRegistrar):
             signal: exec.signal,
           });
         } catch (error) {
-          if (isCommandNotFound(error)) {
-            throw new Error(bskInstallMessage(deps.config.bskPath));
-          }
+          const guidance = bskSpawnGuidance(error, deps.config.bskPath);
+          if (guidance !== undefined) throw new Error(guidance);
           throw error;
         }
       },

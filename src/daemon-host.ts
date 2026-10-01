@@ -28,6 +28,7 @@
  */
 
 import { type ChildProcess, spawn } from "node:child_process";
+import { isSpawnDenied } from "./runner";
 
 /** Structural view of the runner seam this module drives. */
 export interface DaemonCommandRunner {
@@ -158,6 +159,10 @@ export class DaemonHost {
         stdio: ["ignore", "ignore", "pipe"],
       });
     } catch (error) {
+      // A refused spawn is already reported by the plugin's startup probe, and
+      // the guidance there is strictly more useful. Stay quiet so one failure
+      // does not print two warnings with the same bare `spawn UNKNOWN`.
+      if (isSpawnDenied(error)) return { kind: "unavailable", detail: "spawn denied" };
       const detail = error instanceof Error ? error.message : String(error);
       warn(`[dsh-browser-skill] could not host the bsk daemon: ${detail}`);
       return { kind: "unavailable", detail };

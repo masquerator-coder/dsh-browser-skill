@@ -19,7 +19,7 @@ import { armLazyTools } from "./lazy-tools";
 import { ObservationService } from "./observation";
 import { registerObservationRoutes } from "./observation-http";
 import { KeyedExecutor } from "./queue";
-import { type BskRunner, createBskRunner } from "./runner";
+import { type BskRunner, bskSpawnGuidance, createBskRunner } from "./runner";
 import { SessionStarts } from "./session-starts";
 import { SessionRegistry } from "./sessions";
 import { armAgentScopedBskSkill, registerBskSkill } from "./skill";
@@ -156,9 +156,14 @@ export function apply(
   runner.run(["--version"], { timeoutMs: 10_000 }).then(
     () => {},
     (error: unknown) => {
+      const guidance = bskSpawnGuidance(error, resolved.bskPath);
+      if (guidance !== undefined) {
+        console.warn(`[${name}] browser tools are unavailable — ${guidance}`);
+        return;
+      }
       const detail = error instanceof Error ? error.message : String(error);
       console.warn(
-        `[${name}] bsk probe failed (${detail}); browser tools will report install guidance until the bsk CLI is available`,
+        `[${name}] bsk probe failed (${detail}); browser tools will report it when used`,
       );
     },
   );
