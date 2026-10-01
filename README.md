@@ -23,6 +23,17 @@ dsh `0.1.5-rc.3` to `0.2.0-rc.2`.
 **Skill** — `skill/SKILL.md` plus five references, telling the model when and how to drive the
 tools. `scripts/check-skill.mjs` asserts every shipped tool is documented and vice versa.
 
+**Progressive disclosure** — by default the six tool schemas stay *out of the system prompt*
+until the `browser-skill` skill has actually been invoked. The skill's catalog entry is the only
+advertisement at first, so a session that never loads the skill sees no `browser_*` tools at all:
+
+```text
+skill({ name: "browser-skill" })   # once per process; reveals the whole suite
+```
+
+The reveal is idempotent and survives session resume (the plugin scans durable history for a past
+successful invocation). Set `lazyTools: false` to register the full suite at load instead.
+
 **Client half** — `lib/client.cjs`, a CommonJS module-loader bundle the Web shell materializes.
 It registers a `browser_inspect` tool view (screenshot cards) and a `shell.overlay` seat for the
 live observation sidebar. React and the `@deepseek-ai/dsh-client-ui-primitives` are supplied by
@@ -31,8 +42,36 @@ the shell, not bundled.
 ## Requirements
 
 - The `bsk` CLI on `PATH` (the plugin shells out to it; it does not embed a browser).
-- A running daemon. Start it yourself with `bsk daemon start` — the plugin will not auto-start
-  one, because a daemon spawned under a Windows Job Object fails to detach (`os error 5`).
+- A running daemon — **provided for you**. The plugin hosts one itself when none answers, so
+  there is nothing to start by hand.
+
+### Why the plugin hosts the daemon
+
+`bsk` normally auto-spawns its daemon as an independent, detached process
+(`CREATE_BREAKAWAY_FROM_JOB`). A host that runs every command inside a `KILL_ON_JOB_CLOSE` Job
+without `JOB_OBJECT_LIMIT_BREAKAWAY_OK` — dsh's own sandbox does exactly this — makes that
+impossible, and `bsk` deliberately refuses rather than leaving a daemon pinned to a doomed Job:
+
+```text
+cannot start an independent Windows daemon; the host may prohibit Job Object
+breakaway ... Run `bsk daemon start --foreground` in a persistent host task
+outside the per-command Job ... 拒绝访问。 (os error 5)
+```
+
+Rather than defeat the restriction, the plugin uses the form it allows: `bsk daemon start
+--foreground` as a child of the plugin, inside the same Job, never asking to break away. It is
+stopped when the plugin unloads, which is what the Job was asking for anyway.
+
+Consequences worth knowing:
+
+- A daemon started any other way (an independent terminal, a service, another agent) is left
+  completely alone — hosting runs only when nothing answers, and only the child the plugin
+  started is ever stopped.
+- Once hosting is in effect, every `bsk` call gets `BSK_AUTO_START=0`, so a tool call never
+  re-runs the breakaway probe this host is known to refuse.
+- The hosted daemon keeps `bsk`'s default 30-minute idle timeout and is rebuilt on demand, so an
+  idle gap costs nothing at the next tool call.
+- Set `hostDaemon: false` to opt out and manage the daemon yourself.
 
 ## Install
 
