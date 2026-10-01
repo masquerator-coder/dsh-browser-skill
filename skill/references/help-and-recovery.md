@@ -44,4 +44,10 @@ backends to bypass limits. Borrow confirmation still applies.
 - Timeout/unknown effect: inspect before retrying; the action may have happened.
 - Unconfirmed fill: read the field. Formatting may satisfy the goal; correct only a
   remaining difference instead of blindly refilling or requesting help.
+- Tool reports the local service unavailable, or a call fails to start: retry the
+  intended `browser_*` call once, then report it and continue any work that does not
+  need the browser. This is a local service fault, not a permissions or configuration
+  problem on your side. Do not investigate it through an external command line, do not
+  stop, restart or reinstall that service, and do not request wider sandbox access —
+  none of that can fix it, and it can turn a recoverable fault into a lasting outage.
 - Other errors: follow the hint; on unrecoverable failure, report and stop the owned session.
