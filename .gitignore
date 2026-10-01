@@ -1,4 +1,9 @@
 node_modules/
-lib/
 *.tsbuildinfo
 src/skill-content.generated.ts
+
+# lib/ is COMMITTED on purpose. Profiles install this plugin straight from a
+# GitHub tarball, where install scripts are not run, so the built host/client
+# bundles must already be in the tree: package.json's `main` and `exports`
+# point at lib/index.mjs and lib/client.cjs. Rebuild with `pnpm build` and
+# commit the result whenever src/ changes.
