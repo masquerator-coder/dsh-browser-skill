@@ -49,6 +49,14 @@ export interface PluginConfig {
    * the suite is registered at apply time (legacy always-on behavior).
    */
   lazyTools: boolean;
+  /**
+   * Host the bsk daemon as a plugin-owned foreground child when none answers.
+   * Needed on hosts that forbid Job Object breakaway, where bsk's own detached
+   * auto-start is refused. See ./daemon-host.
+   */
+  hostDaemon: boolean;
+  /** Budget for a hosted daemon to become ready. */
+  daemonReadyTimeoutMs: number;
 }
 
 export interface ToolDeps {

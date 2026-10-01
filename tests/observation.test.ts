@@ -72,6 +72,7 @@ function fakeRunner(
   return {
     calls,
     killed,
+    setHostedDaemon() {},
     async run(args: string[], options: BskRunOptions = {}): Promise<BskRunResult> {
       calls.push({ args, options });
       if (args[0] === "session" && args[1] === "stop") {
@@ -390,6 +391,7 @@ describe("thumbnail cadence", () => {
         });
       },
       killAll() {},
+      setHostedDaemon() {},
       killFor(tag) {
         killed.push(tag);
         if (tag === "observation:s1" && finishCapture !== undefined) {

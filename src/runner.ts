@@ -67,6 +67,11 @@ export interface BskRunner {
   killAll(): void;
   /** Kill running children carrying this tag; returns the number matched. */
   killFor(tag: string): number;
+  /**
+   * Declare that this plugin hosts (or confirmed) the daemon, which suppresses
+   * `BSK_AUTO_START` on every later command. See ./daemon-host.
+   */
+  setHostedDaemon(hosted: boolean): void;
 }
 
 // Business RPCs translate Ctrl-C / opt-in stdin EOF into cancel(rpc_id).
@@ -106,6 +111,17 @@ export function createBskRunner(bskPath: string, spawnImpl: SpawnImpl = spawn): 
   // The kill grace and the settlement deadline stay in step: a Windows
   // cancellation using its full 15s must not be cut short by a 4s fallback.
   const settleAfterKillMs = killGraceMs + SETTLE_AFTER_KILL_SLACK_MS;
+  // Set once the daemon host confirms it owns the daemon (or that one is
+  // already answering); see `setHostedDaemon` on the returned runner.
+  let hostedDaemon = false;
+  // When this plugin hosts the daemon itself (see ./daemon-host), automatic
+  // startup must stay off: letting `bsk` retry its independent, detached spawn
+  // on every command would re-run a Job-breakaway probe that this host is
+  // known to refuse, turning each browser call into an extra os error 5 round
+  // trip. `BSK_AUTO_START=0` makes `bsk` fail fast with its own guidance if the
+  // hosted daemon ever goes away.
+  const environment = (): NodeJS.ProcessEnv =>
+    hostedDaemon ? { ...process.env, BSK_AUTO_START: "0" } : { ...process.env };
 
   function killChild(child: ChildProcess): void {
     if (child.exitCode !== null || child.signalCode !== null || cancelling.has(child)) return;
@@ -137,12 +153,15 @@ export function createBskRunner(bskPath: string, spawnImpl: SpawnImpl = spawn): 
           child = spawnImpl(
             bskPath,
             [...args, "--json"],
-            windows
-              ? {
-                  windowsHide: true,
-                  env: { ...process.env, BSK_CANCEL_ON_STDIN_CLOSE: "1" },
-                }
-              : undefined,
+            {
+              ...(windows ? { windowsHide: true } : {}),
+              env: {
+                ...environment(),
+                // Windows-only: asks the CLI to translate stdin EOF into its
+                // cancel RPC rather than dying without reconciliation.
+                ...(windows ? { BSK_CANCEL_ON_STDIN_CLOSE: "1" } : {}),
+              },
+            },
           );
           // A child exiting while cancellation closes stdin may report EPIPE.
           // Process completion remains the authority for the run result.
@@ -292,6 +311,9 @@ export function createBskRunner(bskPath: string, spawnImpl: SpawnImpl = spawn): 
         if (run.tag === tag && run.requestKill()) killed += 1;
       }
       return killed;
+    },
+    setHostedDaemon(hosted: boolean) {
+      hostedDaemon = hosted;
     },
   };
 }

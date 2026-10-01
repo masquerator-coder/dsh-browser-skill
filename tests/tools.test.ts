@@ -25,6 +25,8 @@ const CONFIG: PluginConfig = {
   thumbnailIntervalMs: 1500,
   idleIntervalMs: 8000,
   lazyTools: false,
+  hostDaemon: false,
+  daemonReadyTimeoutMs: 15_000,
 };
 
 /** An observation service with the feature off: instrumentation becomes a no-op. */
@@ -104,6 +106,7 @@ function fakeRunner(responses: Record<string, unknown>) {
       },
       killAll() {},
       killFor: () => 0,
+      setHostedDaemon() {},
     },
   };
 }
@@ -1295,6 +1298,7 @@ describe("error and cancellation semantics", () => {
       },
       killAll() {},
       killFor: () => 0,
+      setHostedDaemon() {},
     };
     registerBrowserTools({
       ctx: ctx as never,
@@ -1395,6 +1399,7 @@ describe("screenshot scratch file lifecycle", () => {
         },
         killAll() {},
         killFor: () => 0,
+        setHostedDaemon() {},
       } as BskRunner,
     };
   }
@@ -1525,6 +1530,7 @@ describe("observation action instrumentation timing", () => {
       },
       killAll() {},
       killFor: () => 0,
+      setHostedDaemon() {},
     };
     const queue = new KeyedExecutor();
     const observation = new ObservationService({

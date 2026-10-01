@@ -68,6 +68,7 @@ describe("dispose cleanup ownership", () => {
       },
       killAll() {},
       killFor: () => 0,
+      setHostedDaemon() {},
     };
     const tools = new Map<string, ToolDefinition>();
     const disposers: Array<() => Promise<void>> = [];

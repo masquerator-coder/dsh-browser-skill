@@ -63,6 +63,7 @@ export function harness(
     },
     killAll: vi.fn(),
     killFor: vi.fn((_tag: string) => 0),
+    setHostedDaemon: vi.fn(),
   };
   const registry = new SessionRegistry(5);
   const queue = new KeyedExecutor();
@@ -87,6 +88,8 @@ export function harness(
       thumbnailIntervalMs: 1500,
       idleIntervalMs: 8000,
       lazyTools: false,
+      hostDaemon: false,
+      daemonReadyTimeoutMs: 15000,
     },
   };
   const starts = (deps.starts = new SessionStarts(deps, journal));

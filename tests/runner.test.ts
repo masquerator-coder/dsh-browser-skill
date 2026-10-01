@@ -1,4 +1,4 @@
-import { type ChildProcess, spawn } from "node:child_process";
+import { type ChildProcess, type SpawnOptionsWithoutStdio, spawn } from "node:child_process";
 import { EventEmitter } from "node:events";
 import { mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
@@ -414,6 +414,41 @@ describe("Windows parent cancellation", () => {
   afterEach(() => {
     Object.defineProperty(process, "platform", originalPlatform);
     vi.useRealTimers();
+  });
+
+  it("suppresses bsk's own auto-start once this plugin hosts the daemon", async () => {
+    // Hosting replaces bsk's detached spawn, which a Job Object without
+    // breakaway refuses; leaving auto-start on would re-probe on every call.
+    const child = Object.assign(new FakeChild(), { stdin: new PassThrough() });
+    const spawn = vi.fn(
+      (_command: string, _args: string[], _options?: SpawnOptionsWithoutStdio) =>
+        child as unknown as ChildProcess,
+    );
+    const runner = createBskRunner("bsk", spawn);
+
+    runner.setHostedDaemon(true);
+    const result = runner.run(["snapshot"]);
+    const env = spawn.mock.calls[0]?.[2]?.env as Record<string, string> | undefined;
+    expect(env?.BSK_AUTO_START).toBe("0");
+    // The Windows cancellation opt-in must survive alongside it.
+    expect(env?.BSK_CANCEL_ON_STDIN_CLOSE).toBe("1");
+    child.finish(0, "{}");
+    await result;
+  });
+
+  it("leaves auto-start alone when no daemon is hosted", async () => {
+    const child = Object.assign(new FakeChild(), { stdin: new PassThrough() });
+    const spawn = vi.fn(
+      (_command: string, _args: string[], _options?: SpawnOptionsWithoutStdio) =>
+        child as unknown as ChildProcess,
+    );
+    const runner = createBskRunner("bsk", spawn);
+
+    const result = runner.run(["snapshot"]);
+    const env = spawn.mock.calls[0]?.[2]?.env as Record<string, string> | undefined;
+    expect(env?.BSK_AUTO_START).toBeUndefined();
+    child.finish(0, "{}");
+    await result;
   });
 
   it("opts in to stdin cancellation and waits for CLI reconciliation", async () => {

@@ -14,6 +14,7 @@ import type { Context } from "@deepseek-ai/cordis";
 import Schema from "@deepseek-ai/schemastery";
 import { armArchiveCleanup } from "./archive-cleanup";
 import { registerBrowserTools } from "./browser-tools";
+import { DaemonHost } from "./daemon-host";
 import { armLazyTools } from "./lazy-tools";
 import { ObservationService } from "./observation";
 import { registerObservationRoutes } from "./observation-http";
@@ -59,6 +60,17 @@ export const Config = Schema.object({
       "Reveal the browser_* tools only after the browser-skill skill is invoked (default true); " +
         "false registers the full suite at load.",
     ),
+  hostDaemon: Schema.boolean()
+    .default(true)
+    .description(
+      "When no bsk daemon answers, host one as a child of this plugin via " +
+        "`bsk daemon start --foreground` (default true). Required on hosts that run " +
+        "commands in a Job Object without breakaway, where bsk's own detached " +
+        "auto-start is refused; the daemon is stopped when the plugin unloads.",
+    ),
+  daemonReadyTimeoutMs: Schema.number()
+    .default(15_000)
+    .description("How long to wait for a hosted daemon to become ready (milliseconds)."),
 });
 
 export type Config = PluginConfig;
@@ -83,6 +95,8 @@ export function apply(
     thumbnailIntervalMs: config.thumbnailIntervalMs ?? 1500,
     idleIntervalMs: config.idleIntervalMs ?? 8000,
     lazyTools: config.lazyTools ?? true,
+    hostDaemon: config.hostDaemon ?? true,
+    daemonReadyTimeoutMs: config.daemonReadyTimeoutMs ?? 15_000,
   };
   const runner = options.runnerFactory?.(resolved.bskPath) ?? createBskRunner(resolved.bskPath);
   const registry = new SessionRegistry(resolved.maxSessions);
@@ -149,6 +163,42 @@ export function apply(
     },
   );
 
+  // Zero-setup daemon hosting. `bsk` auto-spawns its daemon as an independent,
+  // detached process, which a host that runs commands in a Job Object without
+  // breakaway (dsh's own sandbox) refuses with `os error 5`. Rather than
+  // defeating that restriction, host the daemon the way it allows: a
+  // foreground child of this plugin, inside the same Job, reaped on unload. A
+  // daemon owned by anyone else is never touched — hosting runs only when
+  // nothing answers, and only the child we started is ever killed.
+  const daemonHost = new DaemonHost({
+    bskPath: resolved.bskPath,
+    runner,
+    readyTimeoutMs: resolved.daemonReadyTimeoutMs,
+    warn: (message) => console.warn(message),
+  });
+  if (resolved.hostDaemon) {
+    void daemonHost
+      .start()
+      .then(async (status) => {
+        if (status.kind === "unavailable") return;
+        // Suppress bsk's own auto-start from here on: it can only fail on this
+        // host, and every tool call would pay for the probe.
+        runner.setHostedDaemon(true);
+        if (status.kind === "hosted") {
+          const ready = await daemonHost.waitUntilReady();
+          if (!ready) {
+            console.warn(
+              `[${name}] hosted bsk daemon did not become ready within ${resolved.daemonReadyTimeoutMs}ms`,
+            );
+          }
+        }
+      })
+      .catch((error: unknown) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.warn(`[${name}] bsk daemon hosting failed (${detail})`);
+      });
+  }
+
   // Unload cleanup: kill in-flight children, then stop every session this
   // plugin OWNS (created via browser_session action=start). Referenced or unknown
   // sessions belonging to other programs on the shared daemon are never
@@ -161,7 +211,8 @@ export function apply(
       unregisterSkill();
       removeRoutes();
       disarmArchiveCleanup();
-      return starts.dispose().then(() => observation.dispose());
+      removeSuite();
+      return daemonHost.dispose().then(() => starts.dispose()).then(() => observation.dispose());
     };
   });
 }

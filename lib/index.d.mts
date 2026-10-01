@@ -40,6 +40,11 @@ interface BskRunner {
   killAll(): void;
   /** Kill running children carrying this tag; returns the number matched. */
   killFor(tag: string): number;
+  /**
+   * Declare that this plugin hosts (or confirmed) the daemon, which suppresses
+   * `BSK_AUTO_START` on every later command. See ./daemon-host.
+   */
+  setHostedDaemon(hosted: boolean): void;
 }
 declare function createBskRunner(bskPath: string, spawnImpl?: SpawnImpl): BskRunner;
 //#endregion
@@ -419,6 +424,14 @@ interface PluginConfig {
    * the suite is registered at apply time (legacy always-on behavior).
    */
   lazyTools: boolean;
+  /**
+   * Host the bsk daemon as a plugin-owned foreground child when none answers.
+   * Needed on hosts that forbid Job Object breakaway, where bsk's own detached
+   * auto-start is refused. See ./daemon-host.
+   */
+  hostDaemon: boolean;
+  /** Budget for a hosted daemon to become ready. */
+  daemonReadyTimeoutMs: number;
 }
 interface ToolDeps {
   ctx: Context;
@@ -472,6 +485,8 @@ declare const Config: Schema<Schemastery.ObjectS<NoInfer<{
   thumbnailIntervalMs: Schema<number, number, "defined">;
   idleIntervalMs: Schema<number, number, "defined">;
   lazyTools: Schema<boolean, boolean, "defined">;
+  hostDaemon: Schema<boolean, boolean, "defined">;
+  daemonReadyTimeoutMs: Schema<number, number, "defined">;
 }>>, Schemastery.ObjectT<NoInfer<{
   bskPath: Schema<string, string, "defined">;
   sessionStateDirectory: Schema<string, string, "plain">;
@@ -481,6 +496,8 @@ declare const Config: Schema<Schemastery.ObjectS<NoInfer<{
   thumbnailIntervalMs: Schema<number, number, "defined">;
   idleIntervalMs: Schema<number, number, "defined">;
   lazyTools: Schema<boolean, boolean, "defined">;
+  hostDaemon: Schema<boolean, boolean, "defined">;
+  daemonReadyTimeoutMs: Schema<number, number, "defined">;
 }>>, "plain">;
 type Config = PluginConfig;
 /** Test seams: swap the process runner (unit tests never spawn a real bsk). */
